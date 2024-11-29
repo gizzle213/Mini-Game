@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DDoS Defense Game</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, system-ui, sans-serif;
+            background: #f0f0f0;
+            padding: 20px;
+        }
+        .game-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .score { font-size: 1.2em; font-weight: bold; }
+        .combo { color: #22c55e; }
+        .controls { display: flex; gap: 10px; margin-bottom: 20px; }
+        .button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .button:hover { opacity: 0.9; }
+        .button-primary { background: #3b82f6; color: white; }
+        .button-outline {
+            background: white;
+            border: 1px solid #3b82f6;
+            color: #3b82f6;
+        }
+        .tools {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .tool {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            color: white;
+            transition: all 0.2s;
+        }
+        .tool.selected { outline: 3px solid rgba(255,255,255,0.5); }
+        .tool-firewall { background: #3b82f6; }
+        .tool-antiddos { background: #8b5cf6; }
+        .tool-analyzer { background: #22c55e; }
+        .game-board {
+            position: relative;
+            height: 256px;
+            background: #f8fafc;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        .server {
+            position: absolute;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 48px;
+            height: 48px;
+            background: #3b82f6;
+            border-radius: 4px;
+        }
+        .attacker {
+            position: absolute;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.1s;
+        }
+        .attacker:hover { transform: scale(1.1); }
+        .attacker.basic { background: #ef4444; }
+        .attacker.botnet { background: #8b5cf6; }
+        .attacker.stealth { background: #22c55e; }
+        .health-bar {
+            margin-bottom: 20px;
+        }
+        .health-track {
+            width: 100%;
+            height: 16px;
+            background: #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .health-fill {
+            height: 100%;
+            background: #22c55e;
+            transition: width 0.3s, background-color 0.3s;
+        }
+        .log {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 16px;
+            height: 150px;
+            overflow-y: auto;
+        }
+        .log-entry {
+            margin-bottom: 8px;
+            font-size: 0.9em;
+        }
+        .tutorial {
+            margin-top: 20px;
+            padding: 16px;
+            background: #f8fafc;
+            border-radius: 8px;
+        }
+        .tutorial h3 { margin-bottom: 10px; }
+        .tutorial ul { margin-left: 20px; }
+        .tutorial li { margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="header">
+            <h1>DDoS Defense Game - Level <span id="level">1</span></h1>
+            <div class="score">Score: <span id="score">0</span> <span id="combo" class="combo"></span></div>
+        </div>
+
+        <div class="controls">
+            <button id="startBtn" class="button button-primary">Start Game</button>
+            <button id="resetBtn" class="button button-outline">New Game</button>
+        </div>
+
+        <div class="tools">
+            <button class="tool tool-firewall" data-tool="firewall">Firewall</button>
+            <button class="tool tool-antiddos" data-tool="antiddos">Anti-DDoS</button>
+            <button class="tool tool-analyzer" data-tool="analyzer">Traffic Analyzer</button>
+        </div>
+
+        <div class="game-board">
+            <div class="server"></div>
+        </div>
+
+        <div class="health-bar">
+            <div>Server Health: <span id="health">100</span>%</div>
+            <div class="health-track">
+                <div class="health-fill" style="width: 100%"></div>
+            </div>
+        </div>
+
+        <div class="log" id="log"></div>
+
+        <div class="tutorial" id="tutorial">
+            <h3>How to Play</h3>
+            <ul>
+                <li>Select a defense tool to counter incoming attacks</li>
+                <li>Click on incoming attacks to neutralize them</li>
+                <li>Match the right tool with each attack type for bonus points</li>
+                <li>Chain successful counters for combo multipliers</li>
+            </ul>
+            <h3 style="margin-top: 10px;">Attack Types:</h3>
+            <ul>
+                <li>Basic Attacks (Red) - Vulnerable to Firewall</li>
+                <li>Botnet Attacks (Purple) - Best countered by Anti-DDoS</li>
+                <li>Stealth Attacks (Green) - Detected by Traffic Analyzer</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        class DDOSGame {
+            constructor() {
+                this.isPlaying = false;
+                this.serverHealth = 100;
+                this.score = 0;
+                this.level = 1;
+                this.combo = 0;
+                this.selectedTool = null;
+                this.attackers = [];
+                this.gameLoop = null;
+
+                this.initializeUI();
+                this.bindEvents();
+            }
+
+            initializeUI() {
+                this.startBtn = document.getElementById('startBtn');
+                this.resetBtn = document.getElementById('resetBtn');
+                this.scoreEl = document.getElementById('score');
+                this.levelEl = document.getElementById('level');
+                this.healthEl = document.getElementById('health');
+                this.comboEl = document.getElementById('combo');
+                this.logEl = document.getElementById('log');
+                this.gameBoard = document.querySelector('.game-board');
+                this.healthFill = document.querySelector('.health-fill');
+            }
+
+            bindEvents() {
+                this.startBtn.addEventListener('click', () => this.toggleGame());
+                this.resetBtn.addEventListener('click', () => this.resetGame());
+                
+                document.querySelectorAll('.tool').forEach(tool => {
+                    tool.addEventListener('click', (e) => {
+                        document.querySelectorAll('.tool').forEach(t => t.classList.remove('selected'));
+                        e.target.classList.add('selected');
+                        this.selectedTool = e.target.dataset.tool;
+                    });
+                });
+            }
+
+            toggleGame() {
+                this.isPlaying = !this.isPlaying;
+                this.startBtn.textContent = this.isPlaying ? 'Pause Game' : 'Start Game';
+                
+                if (this.isPlaying) {
+                    this.gameLoop = setInterval(() => this.update(), 100);
+                } else {
+                    clearInterval(this.gameLoop);
+                }
+            }
+
+            resetGame() {
+                this.isPlaying = false;
+                this.serverHealth = 100;
+                this.score = 0;
+                this.level = 1;
+                this.combo = 0;
+                this.selectedTool = null;
+                this.attackers = [];
+                this.updateUI();
+                clearInterval(this.gameLoop);
+                this.startBtn.textContent = 'Start Game';
+                document.querySelectorAll('.tool').forEach(t => t.classList.remove('selected'));
+                document.querySelectorAll('.attacker').forEach(a => a.remove());
+                this.logEl.innerHTML = '';
+            }
+
+            spawnAttacker() {
+                const attackTypes = [
+                    { type: 'basic', speed: 3, size: 20, health: 1 },
+                    { type: 'botnet', speed: 4, size: 24, health: 2 },
+                    { type: 'stealth', speed: 5, size: 16, health: 1 }
+                ];
+
+                const attackType = attackTypes[Math.floor(Math.random() * Math.min(this.level, 3))];
+                const attacker = {
+                    id: Date.now(),
+                    ...attackType,
+                    position: 10,
+                    health: attackType.health * Math.ceil(this.level / 2),
+                    element: null
+                };
+
+                const element = document.createElement('div');
+                element.className = `attacker ${attacker.type}`;
+                element.style.width = `${attacker.size}px`;
+                element.style.height = `${attacker.size}px`;
+                element.style.left = `${attacker.position}%`;
+                element.style.top = '50%';
+                element.style.transform = 'translateY(-50%)';
+                
+                element.addEventListener('click', () => this.handleAttackerClick(attacker));
+                
+                this.gameBoard.appendChild(element);
+                attacker.element = element;
+                this.attackers.push(attacker);
+            }
+
+            handleAttackerClick(attacker) {
+                if (!this.selectedTool) {
+                    this.addLog('⚠️ Select a defense tool first!');
+                    return;
+                }
+
+                const toolEffectiveness = {
+                    'firewall': 'basic',
+                    'antiddos': 'botnet',
+                    'analyzer': 'stealth'
+                };
+
+                const isEffective = toolEffectiveness[this.selectedTool] === attacker.type;
+                const damage = isEffective ? 2 : 1;
+                attacker.health -= damage;
+
+                if (attacker.health <= 0) {
+                    if (isEffective) {
+                        this.combo++;
+                        this.score += 10 * this.combo * this.level;
+                        this.addLog(`🎯 Perfect counter! +${10 * this.combo * this.level} points`);
+                    } else {
+                        this.combo = 0;
+                        this.score += 5 * this.level;
+                        this.addLog(`✅ Attack blocked! +${5 * this.level} points`);
+                    }
+                    attacker.element.remove();
+                    this.attackers = this.attackers.filter(a => a !== attacker);
+                } else {
+                    attacker.element.style.opacity = '0.7';
+                }
+
+                this.updateUI();
+            }
+
+            update() {
+                if (Math.random() < 0.1 * this.level) {
+                    this.spawnAttacker();
+                }
+
+                this.attackers.forEach(attacker => {
+                    attacker.position += attacker.speed;
+                    attacker.element.style.left = `${attacker.position}%`;
+
+                    if (attacker.position >= 90) {
+                        this.serverHealth -= 10;
+                        this.addLog('💥 Server hit! -10 health');
+                        attacker.element.remove();
+                        this.attackers = this.attackers.filter(a => a !== attacker);
+                    }
+                });
+
+                if (this.score > this.level * 1000) {
+                    this.level++;
+                    this.addLog(`🎉 Level ${this.level}! Attacks intensifying!`);
+                }
+
+                if (this.serverHealth <= 0) {
+                    this.addLog('💥 Game Over!');
+                    this.toggleGame();
+                    alert(`Game Over!\nFinal Score: ${this.score}\nLevel Reached: ${this.level}`);
+                }
+
+                this.updateUI();
+            }
+
+            addLog(message) {
+                const entry = document.createElement('div');
+                entry.className = 'log-entry';
+                entry.textContent = message;
+                this.logEl.insertBefore(entry, this.logEl.firstChild);
+
+                if (this.logEl.children.length > 5) {
+                    this.logEl.removeChild(this.logEl.lastChild);
+                }
+            }
+
+            updateUI() {
+                this.scoreEl.textContent = this.score;
+                this.levelEl.textContent = this.level;
+                this.healthEl.textContent = this.serverHealth;
+                this.comboEl.textContent = this.combo > 1 ? `x${this.combo} Combo!` : '';
+                this.healthFill.style.width = `${this.serverHealth}%`;
+                this.healthFill.style.backgroundColor = 
+                    this.serverHealth > 60 ? '#22c55e' :
+                    this.serverHealth > 30 ? '#eab308' : '#ef4444';
+            }
+        }
+
+        // Start the game when the page loads
+        window.addEventListener('load', () => {
+            new DDOSGame();
+        });
+    </script>
+</body>
+</html>
